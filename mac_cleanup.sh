@@ -45,8 +45,8 @@ freed_bytes=0
 report() { # freed? (0/1) label bytes
   local is_clean_free="$1" label="$2" bytes="$3" n
   n=$(( bytes / 1024 / 1024 ))
-  printf "  %-9s %6s MB   %s\n" "( $([ "$is_clean_free" = 1 ] && echo yes || echo DRY) )" "$n" "$label"
-  [ "$MODE" = "clean" ] || [ "$is_clean_free" = 1 ] && freed_bytes=$((freed_bytes + bytes))
+  printf "  ( %-5s ) %6s MB   %s\n" "$([ "$MODE" = "clean" ] && echo yes || echo DRY)" "$n" "$label"
+  [ "$MODE" = "clean" ] && freed_bytes=$((freed_bytes + bytes))
 }
 
 # HELPERS — each returns size (bytes) and, in clean mode, deletes it.
