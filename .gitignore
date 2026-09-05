@@ -1,0 +1,31 @@
+# OS / editor
+.DS_Store
+*.swp
+*~
+
+# Secrets (never commit)
+.env
+.env.*
+auth.json
+*.key
+*.pem
+*.p12
+*.mobileprovision
+id_rsa*
+id_ed25519*
+
+# VCS
+.git/
+
+# Junk
+__pycache__/
+*.pyc
+*.log
+logs/
+node_modules/
+.venv/
+venv/
+build/
+dist/
+trace.jsonl
+fakerepo/
