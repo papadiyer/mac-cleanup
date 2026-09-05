@@ -5,9 +5,10 @@ from the native caches, logs, temp files, and developer caches that quietly pile
 up on a Mac — with a **dry-run by default** so nothing is ever deleted without
 you asking for it.
 
-Pairs with **CCleaner** (required — see below): this script automates the native
+Pairs with **CCleaner** (optional — see below): this script automates the native
 and dev-tool layer, while CCleaner's GUI handles app-specific junk (browsers,
-per-application caches).
+per-application caches). The script **detects** CCleaner if it's installed, but
+runs perfectly well without it — the engine is native.
 
 ## Features
 
@@ -16,14 +17,15 @@ per-application caches).
   old logs & temp, Trash, Homebrew stale bottles
 - **`--aggressive`** — larger/optional targets: `~/.cache` (Hermes/browser
   caches), Docker prune, old system logs
-- **CCleaner guard** — requires CCleaner (`com.piriform.ccleaner`) installed
+- **CCleaner detected (optional)** — the script notes if CCleaner `com.piriform.ccleaner`
+  is installed; runs fine without it (engine is native).
 - **`--json`** — machine-readable summary output
 
 ## Requirements
 
 - macOS
-- **CCleaner for Mac installed** (required by design; the script guards on it)
 - Bash (built-in)
+- CCleaner for Mac **optional** (detected if present; not required — engine is native)
 - Optional, only if you want those targets: `npm` / `pip3` / `brew` / `docker`
 
 ## Quickstart

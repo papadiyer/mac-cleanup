@@ -27,13 +27,14 @@ for arg in "$@"; do
   esac
 done
 
-# --- CCleaner prerequisite guard (per spec: this tool requires CCleaner installed) ---
-if [ ! -d "/Applications/CCleaner.app" ]; then
-  echo "ERROR: CCleaner is required but not installed at /Applications/CCleaner.app"
-  echo "Install CCleaner for Mac, or remove the guard in this script to run native-only."
-  exit 1
+# --- CCleaner detection (OPTIONAL companion — the engine is native) ---
+# CCleaner-on-Mac is GUI-only (no CLI/AppleScript) so it can't be driven here.
+# It's a nice companion for app-specific junk; the script works fine without it.
+if [ -d "/Applications/CCleaner.app" ]; then
+  CC_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" /Applications/CCleaner.app/Contents/Info.plist 2>/dev/null || echo "?")
+else
+  CC_VERSION="not-installed"
 fi
-CC_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" /Applications/CCleaner.app/Contents/Info.plist 2>/dev/null || echo "?")
 
 before=$(df -k / | tail -1 | awk '{print $4}')
 echo "mac_cleanup | mode=${MODE} aggressive=${AGGRESSIVE} CCleaner=${CC_VERSION}"
