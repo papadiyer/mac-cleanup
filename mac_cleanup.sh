@@ -62,8 +62,16 @@ report() { # label bytes  (dry/status = measure+show; clean = delete+show)
 }
 
 sz(){ du -k "$1" 2>/dev/null | tail -1 | awk '{print $1*1024}'; }
-clean_dir(){ local d="$1"; local b; b=$(sz "$d"); [ "$MODE" = "clean" ] && find "$d" -mindepth 1 -delete 2>/dev/null; report "cache dir: $d" "$b"; }
-clean_old(){ local d="$1" age="$2" label="$3"; local n; n=$(find "$d" -type f -mtime "+$age" 2>/dev/null | wc -l | awk '{print $1}'); [ "$MODE" = "clean" ] && find "$d" -type f -mtime "+$age" -delete 2>/dev/null; report "$label ($n files > $age days)" 0; }
+# SAFETY GUARD (defense-in-depth): a target must never be the root, the home dir,
+# or a mount point — this is the catastrophic-wipe case. Refuses (exit 1) if so.
+assert_safe_target(){
+  local t="$1"
+  [ "$t" = "/" ] && { echo "[SAFETY] Refusing to delete filesystem root: $t"; exit 1; }
+  [ "$t" = "$HOME" ] && { echo "[SAFETY] Refusing to delete home dir: $t"; exit 1; }
+  [ -z "$t" ] && { echo "[SAFETY] Empty target — refusing."; exit 1; }
+}
+clean_dir(){ local d="$1"; local b; b=$(sz "$d"); [ "$MODE" = "clean" ] && { assert_safe_target "$d"; find "$d" -mindepth 1 -delete 2>/dev/null; }; report "cache dir: $d" "$b"; }
+clean_old(){ local d="$1" age="$2" label="$3"; local n; n=$(find "$d" -type f -mtime "+$age" 2>/dev/null | wc -l | awk '{print $1}'); [ "$MODE" = "clean" ] && { assert_safe_target "$d"; find "$d" -type f -mtime "+$age" -delete 2>/dev/null; }; report "$label ($n files > $age days)" 0; }
 
 echo "== TIER-A: re-downloadable caches (lowest risk) =="
 clean_dir "$HOME/Library/Caches"
