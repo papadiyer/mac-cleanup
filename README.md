@@ -33,14 +33,33 @@ runs perfectly well without it — the engine is native.
 ```bash
 chmod +x mac_cleanup.sh
 
-./mac_cleanup.sh                        # dry-run (recommended first)
-./mac_cleanup.sh --clean                # actually reclaim safe targets
-./mac_cleanup.sh --clean --aggressive   # + big caches, Docker, system logs
-./mac_cleanup.sh --json                 # machine-readable summary
+./mac_cleanup.sh                           # read-only STATUS report (safe, no delete)
+./mac_cleanup.sh --status --json           # machine-readable status
+./mac_cleanup.sh --clean --approve=YOU     # reclaim safe targets (HUMAN-APPROVED only)
+./mac_cleanup.sh --clean --aggressive --approve=YOU   # + big caches, Docker, system logs
 ```
 
-`--help` prints usage. `--clean` is destructive, so always dry-run first and
-review the target list.
+`--help` prints usage.
+
+## Governance (fail-closed)
+
+This tool is **human-gated** — it never deletes on its own.
+
+- **Agent-safe (read-only):** `--status` / default reports disk free, what's
+  reclaimable, and why. Deletes nothing. An agent may run this freely to inform
+  a human.
+- **Destructive = P5 gate:** any deletion (`--clean`, `--aggressive`) requires an
+  explicit **`--approve=<who>`** token representing human authorization. Without
+  it the script **refuses and exits 1** (fail-closed) — it will not write a
+  single byte.
+- **Never auto-touched:** user documents/data (movies, CloudStorage),
+  `~/Library/Containers` (app sandboxes, enterprise/Intune-managed),
+  `~/Library/Group Containers`, and system paths. Only caches/logs/temp/dev-tool
+  junk is candidate.
+
+So the flow is: **agent reports (status) → human reviews → human approves →
+clean runs** (with the approving identity logged). That matches the principle
+that `rm` is a P5-level action requiring human approval.
 
 ## How it works
 

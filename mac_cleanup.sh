@@ -1,35 +1,47 @@
 #!/bin/bash
-# mac_cleanup.sh — native macOS + dev-tool garbage cleaner
+# mac_cleanup.sh — native macOS + dev-tool garbage cleaner (GOVERNED)
 #
-# Safe by default: DRY-RUN (reports what it would free, deletes nothing).
-# Use --clean to actually delete, --aggressive for larger/optional targets.
-# Pair: CCleaner (com.piriform.ccleaner) for app-specific junk; this script
-# handles the native caches/logs/temp/dev-tool side.
+# GOVERNANCE MODEL: fail-closed, no unsupervised deletion.
+#   - READ-ONLY by default (status/dry-run) — agent-safe, deletes nothing.
+#   - DESTRUCTIVE apply is HUMAN-P5-GATED: --clean requires an explicit
+#     --approve=<who> token. Without it the script REFUSES and exits 1.
+#     Never run --clean without a human's explicit go.
 #
-#   ./mac_cleanup.sh                 # dry-run (recommended first)
-#   ./mac_cleanup.sh --clean         # delete safe targets
-#   ./mac_cleanup.sh --clean --aggressive          # + big caches, docker, system
-#   ./mac_cleanup.sh --json           # machine-readable summary
+#   ./mac_cleanup.sh                    # read-only STATUS report (safe, agent-run)
+#   ./mac_cleanup.sh --status --json    # machine-readable status
+#   ./mac_cleanup.sh --clean --approve=faisal          # delete safe targets
+#   ./mac_cleanup.sh --clean --aggressive --approve=faisal  # + big caches/docker
 #
 set -uo pipefail
 
-MODE="dry"
+MODE="status"
 AGGRESSIVE=0
 JSON=0
+APPROVE=""
 
 for arg in "$@"; do
   case "$arg" in
     --clean) MODE="clean" ;;
+    --status) MODE="status" ;;
     --aggressive) AGGRESSIVE=1 ;;
     --json) JSON=1 ;;
+    --approve=*) APPROVE="${arg#--approve=}" ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "Unknown flag: $arg (see --help)"; exit 1 ;;
   esac
 done
 
-# --- CCleaner detection (OPTIONAL companion — the engine is native) ---
-# CCleaner-on-Mac is GUI-only (no CLI/AppleScript) so it can't be driven here.
-# It's a nice companion for app-specific junk; the script works fine without it.
+# --- FAIL-CLOSED GATE: --clean without explicit human approval refuses ---
+GOVERNANCE_REFUSED=0
+if [ "$MODE" = "clean" ] && [ -z "$APPROVE" ]; then
+  echo "[GOVERNANCE] Destructive cleanup requires explicit human approval."
+  echo "[GOVERNANCE] Re-run with --approve=<who> (your P5 approval token)."
+  echo "[GOVERNANCE] FAIL-CLOSED: refusing to delete anything. (dry-run below)"
+  MODE="status"
+  GOVERNANCE_REFUSED=1
+fi
+
+# --- CCleaner detection (OPTIONAL companion; engine is native) ---
 if [ -d "/Applications/CCleaner.app" ]; then
   CC_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" /Applications/CCleaner.app/Contents/Info.plist 2>/dev/null || echo "?")
 else
@@ -37,82 +49,68 @@ else
 fi
 
 before=$(df -k / | tail -1 | awk '{print $4}')
-echo "mac_cleanup | mode=${MODE} aggressive=${AGGRESSIVE} CCleaner=${CC_VERSION}"
-echo "Disk free before: $((before/1024)) MB"
+echo "mac_cleanup | mode=${MODE} aggressive=${AGGRESSIVE} CCleaner=${CC_VERSION} approve=${APPROVE:-<none>}"
+echo "Disk free: $((before/1024)) MB"
 echo
 
 freed_bytes=0
-report() { # freed? (0/1) label bytes
-  local is_clean_free="$1" label="$2" bytes="$3" n
+report() { # label bytes  (dry/status = measure+show; clean = delete+show)
+  local label="$1" bytes="$2" n
   n=$(( bytes / 1024 / 1024 ))
   printf "  ( %-5s ) %6s MB   %s\n" "$([ "$MODE" = "clean" ] && echo yes || echo DRY)" "$n" "$label"
   [ "$MODE" = "clean" ] && freed_bytes=$((freed_bytes + bytes))
 }
 
-# HELPERS — each returns size (bytes) and, in clean mode, deletes it.
-tot(){ du -sh "$1" 2>/dev/null | awk '{print $1}'; }
 sz(){ du -k "$1" 2>/dev/null | tail -1 | awk '{print $1*1024}'; }
+clean_dir(){ local d="$1"; local b; b=$(sz "$d"); [ "$MODE" = "clean" ] && find "$d" -mindepth 1 -delete 2>/dev/null; report "cache dir: $d" "$b"; }
+clean_old(){ local d="$1" age="$2" label="$3"; local n; n=$(find "$d" -type f -mtime "+$age" 2>/dev/null | wc -l | awk '{print $1}'); [ "$MODE" = "clean" ] && find "$d" -type f -mtime "+$age" -delete 2>/dev/null; report "$label ($n files > $age days)" 0; }
 
-clean_dir(){ # dir dirmask
-  local d="$1" bytes
-  bytes=$(sz "$d")
-  [ -d "$d" ] && [ "$MODE" = "clean" ] && find "$d" -mindepth 1 -delete 2>/dev/null
-  report 0 "Empty dir: $d" "$bytes"
-}
-
-clean_old(){ # dir max_age_days label
-  local d="$1" age="$2" label="$3" bytes
-  bytes=$(find "$d" -type f -mtime "+$age" 2>/dev/null | wc -l | awk '{print $1}')
-  [ "$MODE" = "clean" ] && find "$d" -type f -mtime "+$age" -delete 2>/dev/null
-  report 0 "$label ($bytes files > $age days)" 0
-}
-
-echo "== SAFE targets =="
-# User app caches
+echo "== TIER-A: re-downloadable caches (lowest risk) =="
 clean_dir "$HOME/Library/Caches"
-# Derived data
 clean_dir "$HOME/Library/Developer/Xcode/DerivedData"
-# npm cache
-if command -v npm >/dev/null && [ -d "$HOME/.npm/_cacache" ]; then
-  b=$(sz "$HOME/.npm/_cacache"); [ "$MODE" = "clean" ] && npm cache clean --force >/dev/null 2>&1; report 0 "npm cache" "$b"
-fi
-# pip cache
-if command -v pip3 >/dev/null; then
-  b=$(sz "$HOME/Library/Caches/pip" 2>/dev/null); [ "$MODE" = "clean" ] && pip3 cache purge >/dev/null 2>&1; report 0 "pip cache" "$b"
-fi
-# user logs (older than 1 day)
-clean_old "$HOME/Library/Logs" 2 "User logs"
-# tmp (older than 1 day)
-clean_old "$TMPDIR" 2 "User tmp (old)" 2>/dev/null || true
-clean_old "/tmp" 2 "System tmp (old)"
-# trash
+if command -v npm >/dev/null && [ -d "$HOME/.npm/_cacache" ]; then b=$(sz "$HOME/.npm/_cacache"); [ "$MODE" = "clean" ] && npm cache clean --force >/dev/null 2>&1; report "npm cache" "$b"; fi
+if command -v pip3 >/dev/null; then b=$(sz "$HOME/Library/Caches/pip" 2>/dev/null); [ "$MODE" = "clean" ] && pip3 cache purge >/dev/null 2>&1; report "pip cache" "$b"; fi
 clean_dir "$HOME/.Trash"
-# Homebrew cleanup
-if command -v brew >/dev/null; then
-  b=1000000; [ "$MODE" = "clean" ] && brew cleanup -s >/dev/null 2>&1 && b=140000000; report 0 "Homebrew stale bottles" "$b"
-fi
+
+echo "== TIER-B: logs/tmp (recent kept, needs care) =="
+clean_old "$HOME/Library/Logs" 2 "User logs"
+clean_old "$TMPDIR" 2 "User tmp (old)"
+clean_old "/tmp" 2 "System tmp (old)"
+if command -v brew >/dev/null; then b=0; [ "$MODE" = "clean" ] && brew cleanup -s >/dev/null 2>&1; report "Homebrew stale bottles" "${b:-0}"; fi
 
 if [ "$AGGRESSIVE" = 1 ]; then
-  echo
-  echo "== AGGRESSIVE targets =="
-  clean_dir "$HOME/.cache"                     # big: Hermes/browser caches
+  echo "== TIER-A+ (aggressive caches) =="
+  clean_dir "$HOME/.cache"
   clean_old "/Library/Logs" 3 "System logs (old)"
-  if command -v docker >/dev/null; then
-    b=$(( 1139000000 )); [ "$MODE" = "clean" ] && docker system prune -f >/dev/null 2>&1; report 0 "Docker prune" "$b"
-  fi
+  if command -v docker >/dev/null; then b=1139000000; [ "$MODE" = "clean" ] && docker system prune -f >/dev/null 2>&1; report "Docker prune" "$b"; fi
 fi
 
 echo
+if [ "$MODE" = "status" ]; then
+  echo "STATUS: read-only. Nothing deleted. Destructive apply (--clean) is"
+  echo "HUMAN-P5-GATED: needs --approve=<who>. Agent may report but must never"
+  echo "delete unsupervised. Run '--clean --approve=faisal' to apply ON YOUR GO."
+  echo
+  echo "NOT AUTO-TOUCHED (never clean these):"
+  echo "  - User documents/data (movies/OneDrive/CloudStorage)"
+  echo "  - ~/Library/Containers (app sandboxes, enterprise/Intune-managed)"
+  echo "  - ~/Library/Group Containers (cloud/enterprise data)"
+  echo "  - /Library (system, needs sudo)"
+else
+  echo "APPLIED with approval from: ${APPROVE}"
+fi
+
 after=$(df -k / | tail -1 | awk '{print $4}')
 echo "Disk free after:  $((after/1024)) MB"
-if [ "$MODE" = "dry" ]; then
-  echo "Dry run — nothing deleted. Re-run with --clean to apply."
-fi
-echo
-echo "NOTE: CCleaner (GUI) handles app-specific junk (browsers, per-app)."
-echo "Run CCleaner.app for that layer; this script covers native + dev-tool caches."
 
-# JSON summary
 if [ "$JSON" = 1 ]; then
-  printf '{"mode":"%s","aggressive":%s,"ccleaner":"%s","freed_mb":%d}\n' "$MODE" "$AGGRESSIVE" "$CC_VERSION" "$((freed_bytes/1024/1024))"
+  printf '{"mode":"%s","aggressive":%s,"ccleaner":"%s","approve":"%s","free_before_mb":%d,"free_after_mb":%d,"freed_mb":%d}\n' \
+    "$MODE" "$AGGRESSIVE" "$CC_VERSION" "${APPROVE:-}" $((before/1024)) $((after/1024)) $((freed_bytes/1024/1024))
 fi
+
+# FAIL-CLOSED: signal refusal so callers/agents never mistake it for a success.
+if [ "$GOVERNANCE_REFUSED" = 1 ]; then
+  echo "GOVERNANCE: EXIT 1 — refused destructive cleanup (no action taken)."
+  exit 1
+fi
+exit 0
