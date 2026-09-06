@@ -72,3 +72,8 @@ removes — nothing is silently dropped.
 
 Feedback, advice, and pull requests are welcome. Keep the safety posture: always
 dry-run by default, never delete without showing the user first.
+
+## License
+
+This project is released under the [MIT License](./LICENSE). You are free to use,
+modify, and distribute it per the terms of that license.
