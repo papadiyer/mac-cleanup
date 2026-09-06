@@ -73,6 +73,13 @@ removes — nothing is silently dropped.
 Feedback, advice, and pull requests are welcome. Keep the safety posture: always
 dry-run by default, never delete without showing the user first.
 
+## Testing
+
+The script is linted with [ShellCheck](https://www.shellcheck.net/) on every push
+(see `.github/workflows/ci.yml`). No runtime tests are run in CI because this is a
+macOS-specific destructive tool — actual deletion must not run on a Linux runner
+and never without human approval.
+
 ## License
 
 This project is released under the [MIT License](./LICENSE). You are free to use,
